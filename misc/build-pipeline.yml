@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  CodeCommitRepo:
+    Type: String
+    Default: AwsSaKinesisReplay
+
+  CodeCommitBranch:
+    Type: String
+    Default: mainline
+
+Outputs:
+  ArtifactBucket:
+    Description: Bucket containing the compiled artifacts
+    Value: !GetAtt ArtifactBucket.DomainName
+
+  KinesisTaxiTripProducerCopyCommand:
+    Description: Command for copying the producer artifact to the producer host
+    Value: !Sub aws s3 cp s3://${ArtifactBucket}/artifacts/amazon-kinesis-replay-1.0-SNAPSHOT.jar .
+
+Resources:
+  BuildPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: DemoArtifactsSourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: DemoArtifactsSource
+              Configuration:
+                RepositoryName: !Ref CodeCommitRepo
+                BranchName: !Ref CodeCommitBranch
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: BuildKinesisProducer
+              InputArtifacts:
+                - Name: DemoArtifactsSource
+              OutputArtifacts:
+                - Name: KinesisProducer
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref KinesisProducerBuildProject
+              RunOrder: 1
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+
+
+  KinesisProducerBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_LARGE
+        Image: aws/codebuild/java:openjdk-11
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.1
+
+          phases:
+            build:
+              commands:
+                - mvn clean package -B 
+            post_build:
+              commands:
+                - aws s3 cp --quiet --recursive --exclude '*' --include '*.jar' --exclude 'original-*' target s3://${ArtifactBucket}/artifacts/
+
+          artifacts:
+            files:
+              - target/*.jar
+            discard-paths: yes
+      TimeoutInMinutes: 10
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "codepipeline.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:UploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:CancelUploadArchive
+              - Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+              - Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}
+                Effect: Allow
+                Action:
+                  - s3:GetBucketVersioning
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - cloudformation:*
+                  - iam:PassRole
+
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": { "Service": [ "codebuild.amazonaws.com" ]},
+                "Action": [ "sts:AssumeRole" ]
+            }]
+        }
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
