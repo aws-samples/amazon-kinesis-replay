@@ -169,16 +169,17 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Resource: "*"
+              - Resource: 
+                  - !Sub arn:aws:logs:*:*:log-group:/aws/codebuild/*
+                  - !Sub arn:aws:logs:*:*:log-group:/aws/codebuild/*:log-stream:*
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                  - ecr:GetAuthorizationToken
               - Resource: 
-                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
                   - !Sub arn:aws:s3:::${ArtifactBucket}
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
                 Effect: Allow
                 Action:
                   - s3:GetObject
