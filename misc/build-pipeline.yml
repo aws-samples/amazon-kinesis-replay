@@ -81,9 +81,29 @@ Resources:
                 BucketName: !Ref ArtifactBucket
                 Extract: true
               RunOrder: 1
+            - Name: NotifyCloudformation
+              ActionTypeId:
+                Category: Invoke
+                Owner: AWS
+                Version: 1
+                Provider: Lambda
+              Configuration:
+                FunctionName: !Ref NotifyWaitConditionLambdaFunction
+              RunOrder: 2
       ArtifactStore:
         Type: S3
         Location: !Ref ArtifactBucket
+
+
+  BuildCompleteWaitCondition:
+    Type: AWS::CloudFormation::WaitCondition
+    Properties: 
+      Count: 1
+      Handle: !Ref BuildCompleteWaitHandle
+      Timeout: 300
+
+  BuildCompleteWaitHandle: 
+    Type: AWS::CloudFormation::WaitConditionHandle 
 
 
   KinesisReplayBuildProject:
@@ -120,6 +140,39 @@ Resources:
         Status: Enabled
 
 
+  NotifyWaitConditionLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: !Sub |
+          import json
+          import boto3
+          import urllib.request
+
+          code_pipeline = boto3.client('codepipeline')
+
+          def handler(event, context):
+            job_id = event['CodePipeline.job']['id']
+
+            url = '${BuildCompleteWaitHandle}'
+            headers = { "Content-Type": "" }
+            data = { "Status": "SUCCESS", "Reason": "Compilation Succeeded", "UniqueId": "KinesisReplayBuildProject", "Data": "Compilation Succeeded" }
+
+            try:
+              req = urllib.request.Request(url, headers=headers, data=bytes(json.dumps(data), encoding="utf-8"), method='PUT')
+              response = urllib.request.urlopen(req)
+
+              code_pipeline.put_job_success_result(jobId=job_id)
+            except Exception as e:
+              print("failure: " + str(e))
+              code_pipeline.put_job_failure_result(jobId=job_id, failureDetails={'message': str(e), 'type': 'JobFailed'})
+
+      Runtime: python3.7
+      Timeout: 10
+
+
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -151,6 +204,12 @@ Resources:
                 Action:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
+              - Resource: !Sub ${NotifyWaitConditionLambdaFunction.Arn}
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                  - lambda:InvokeAsync
+
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -186,3 +245,36 @@ Resources:
                   - s3:PutObject
                   - s3:GetObjectVersion
                   - s3:ListBucket
+
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+      - PolicyName: root
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Resource: "*"
+            Effect: Allow
+            Action:
+              - codepipeline:PutJobSuccessResult
+              - codepipeline:PutJobFailureResult
+          - Resource:
+              - !Sub arn:aws:logs:*:*:log-group:/aws/lambda/*
+              - !Sub arn:aws:logs:*:*:log-group:/aws/lambda/*:log-stream:*
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
