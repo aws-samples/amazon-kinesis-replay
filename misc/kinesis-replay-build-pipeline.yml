@@ -24,11 +24,11 @@ Parameters:
 Outputs:
   ArtifactBucket:
     Description: Bucket containing the generated jar file
-    Value: !GetAtt ArtifactBucket.DomainName
+    Value: !Ref ArtifactBucket
 
-  KinesisTaxiTripProducerCopyCommand:
+  KinesisReplayCopyCommand:
     Description: AWS cli command to copy the kinesis replay jar
-    Value: !Sub aws s3 cp s3://${ArtifactBucket}/artifacts/amazon-kinesis-replay-1.0.jar .
+    Value: !Sub aws s3 cp --recursive --exclude '*' --include 'amazon-kinesis-replay-*.jar' 's3://${ArtifactBucket}/target/' .
 
 Resources:
   BuildPipeline:
