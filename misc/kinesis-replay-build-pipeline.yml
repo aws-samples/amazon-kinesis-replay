@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: 2010-09-09
 
 Parameters:
   GitHubOAuthToken: 
-    Description: Create a token with 'repo' and 'admin:repo_hook' permissions here https://github.com/settings/tokens
+    Description: Optional. Create a token with 'repo' and 'admin:repo_hook' permissions here https://github.com/settings/tokens
     Type: String
     NoEcho: true
 
@@ -21,6 +21,12 @@ Parameters:
     Type: String
     Default: master
 
+Conditions:
+  S3Provider:
+    !Equals [!Ref GitHubOAuthToken, ""]
+  GithubProvider:
+    !Not [!Equals [!Ref GitHubOAuthToken, ""]]
+
 Outputs:
   ArtifactBucket:
     Description: Bucket containing the generated jar file
@@ -28,7 +34,7 @@ Outputs:
 
   KinesisReplayCopyCommand:
     Description: AWS cli command to copy the kinesis replay jar
-    Value: !Sub aws s3 cp --recursive --exclude '*' --include 'amazon-kinesis-replay-*.jar' 's3://${ArtifactBucket}/target/' .
+    Value: !Sub aws s3 cp --recursive --exclude '*' --include 'amazon-kinesis-replay-*.jar' 's3://${ArtifactBucket}/' .
 
 Resources:
   BuildPipeline:
@@ -38,20 +44,34 @@ Resources:
       Stages:
         - Name: Source
           Actions:
-            - Name: KinesisReplaySourceAction
-              ActionTypeId:
-                Category: Source
-                Owner: ThirdParty
-                Version: 1
-                Provider: GitHub
-              Configuration:
-                Owner: !Ref GitHubUser
-                Repo: !Ref GitHubRepository
-                Branch: !Ref GitHubBranch
-                OAuthToken: !Ref GitHubOAuthToken
-              OutputArtifacts:
-                - Name: KinesisReplaySource
-              RunOrder: 1
+            - !If
+              - GithubProvider
+              - Name: KinesisReplaySourceAction
+                ActionTypeId:
+                  Category: Source
+                  Owner: ThirdParty
+                  Version: 1
+                  Provider: GitHub
+                Configuration:
+                  Owner: !Ref GitHubUser
+                  Repo: !Ref GitHubRepository
+                  Branch: !Ref GitHubBranch
+                  OAuthToken: !Ref GitHubOAuthToken
+                OutputArtifacts:
+                  - Name: KinesisReplaySource
+                RunOrder: 1
+              - Name: KinesisReplaySourceAction
+                ActionTypeId:
+                  Category: Source
+                  Owner: AWS
+                  Version: 1
+                  Provider: S3
+                OutputArtifacts:
+                  - Name: KinesisReplaySource
+                Configuration:
+                  S3Bucket: !Ref ArtifactBucket
+                  S3ObjectKey: sources/amazon-kinesis-replay.zip
+                RunOrder: 1
         - Name: Build
           Actions:
             - Name: BuildKinesisReplay
@@ -124,12 +144,14 @@ Resources:
           phases:
             build:
               commands:
+                - 'cd amazon-kinesis-replay-* || :'
                 - mvn clean package -B 
 
           artifacts:
             files:
               - target/amazon-kinesis-replay-*.jar
-            discard-paths: no
+              - amazon-kinesis-replay-*/target/amazon-kinesis-replay-*.jar
+            discard-paths: yes
       TimeoutInMinutes: 5
 
 
@@ -138,6 +160,34 @@ Resources:
     Properties:
       VersioningConfiguration:
         Status: Enabled
+
+  DownloadSources:
+    Type: Custom::DownloadSources
+    Condition: S3Provider
+    Properties:
+      ServiceToken: !GetAtt DownloadSourcesFunction.Arn
+
+  DownloadSourcesFunction:
+    Type: AWS::Lambda::Function
+    Condition: S3Provider
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import cfnresponse
+          from urllib.request import urlopen
+
+          def handler(event, context):
+            s3 = boto3.client('s3')
+
+            replay_source = urlopen('https://github.com/aws-samples/amazon-kinesis-replay/archive/master.zip')
+            s3.put_object(Bucket='${ArtifactBucket}',Key='sources/amazon-kinesis-replay.zip',Body=replay_source.read())
+
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+      Runtime: python3.7
+      Timeout: 60
 
 
   NotifyWaitConditionLambdaFunction:
@@ -278,3 +328,9 @@ Resources:
               - logs:CreateLogGroup
               - logs:CreateLogStream
               - logs:PutLogEvents
+          - Resource: 
+              - !Sub arn:aws:s3:::${ArtifactBucket}
+              - !Sub arn:aws:s3:::${ArtifactBucket}/*
+            Effect: Allow
+            Action:
+              - s3:PutObject
