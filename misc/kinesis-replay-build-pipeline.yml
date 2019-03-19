@@ -21,6 +21,11 @@ Parameters:
     Type: String
     Default: master
 
+  ArtifactBucket:
+    Description: S3 bucket that is used to store the compiled binaries
+    Type: String
+  
+
 Conditions:
   S3Provider:
     !Equals [!Ref GitHubOAuthToken, ""]
@@ -154,12 +159,6 @@ Resources:
             discard-paths: yes
       TimeoutInMinutes: 5
 
-
-  ArtifactBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      VersioningConfiguration:
-        Status: Enabled
 
   DownloadSources:
     Type: Custom::DownloadSources
