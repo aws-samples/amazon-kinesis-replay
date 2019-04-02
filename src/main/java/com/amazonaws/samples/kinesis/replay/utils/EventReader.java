@@ -97,9 +97,6 @@ public class EventReader implements Iterator<JsonEvent> {
 
     if (nextLine == null) {
       if (s3Objects.hasNext()) {
-        //try to open the next S3 object
-        S3Object s3Object = s3Objects.next();
-
         //if another object has been previously read, close it before opening another one
         if (objectStream != null) {
           try {
@@ -107,6 +104,16 @@ public class EventReader implements Iterator<JsonEvent> {
           } catch (IOException e) {
             LOG.warn("failed to close object: {}", e);
           }
+        }
+
+        //try to open the next S3 object
+        S3Object s3Object = s3Objects.next();
+
+        //skip objects that obviously don't contain any data; TODO: make this configurable
+        if (s3Object.key().endsWith("README.md")) {
+          LOG.info("skipping object s3://{}/{}", bucketName, s3Object.key());
+
+          return next();
         }
 
         LOG.info("reading object s3://{}/{}", bucketName, s3Object.key());

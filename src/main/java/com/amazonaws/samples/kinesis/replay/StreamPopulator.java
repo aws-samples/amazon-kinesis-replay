@@ -115,7 +115,7 @@ public class StreamPopulator {
       StreamPopulator populator = new StreamPopulator(
           line.getOptionValue("bucketRegion", "eu-west-1"),
           line.getOptionValue("bucketName", "shausma-nyc-tlc"),
-          line.getOptionValue("objectPrefix", "yellow-trip-data/sequential/taxi-trips.json.lz4/"),
+          line.getOptionValue("objectPrefix", "yellow-trip-data/taxi-trips.json.lz4/"),
           line.getOptionValue("streamRegion", "eu-west-1"),
           line.getOptionValue("streamName", "taxi-trip-events"),
           line.hasOption("aggregate"),
