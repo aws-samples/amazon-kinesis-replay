@@ -21,27 +21,56 @@ Parameters:
     Type: String
     Default: master
 
-  ArtifactBucket:
-    Description: S3 bucket that is used to store the compiled binaries
+  ExternalArtifactBucket:
+    Description: Optional. S3 bucket that is used to store the compiled binaries
     Type: String
   
+
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Source Input Configuration"
+        Parameters: 
+          - GitHubOAuthToken
+          - GitHubUser
+          - GitHubRepository
+          - GitHubBranch
+      - 
+        Label: 
+          default: "Artifact Output Configuration"
+        Parameters: 
+          - ExternalArtifactBucket
+
 
 Conditions:
   S3Provider:
     !Equals [!Ref GitHubOAuthToken, ""]
   GithubProvider:
     !Not [!Equals [!Ref GitHubOAuthToken, ""]]
+  UseInternalArtifactBucket:
+    !Equals [!Ref ExternalArtifactBucket, ""]
 
 Outputs:
   ArtifactBucket:
     Description: Bucket containing the generated jar file
-    Value: !Ref ArtifactBucket
+    Value: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket]
 
   KinesisReplayCopyCommand:
     Description: AWS cli command to copy the kinesis replay jar
-    Value: !Sub aws s3 cp --recursive --exclude '*' --include 'amazon-kinesis-replay-*.jar' 's3://${ArtifactBucket}/' .
+    Value: !Sub 
+      - aws s3 cp --recursive --exclude '*' --include 'amazon-kinesis-replay-*.jar' 's3://${ArtifactBucket}/' .
+      - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
 
 Resources:
+  InternalArtifactBucket:
+    Condition: UseInternalArtifactBucket
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
   BuildPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -74,7 +103,7 @@ Resources:
                 OutputArtifacts:
                   - Name: KinesisReplaySource
                 Configuration:
-                  S3Bucket: !Ref ArtifactBucket
+                  S3Bucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket]
                   S3ObjectKey: sources/amazon-kinesis-replay.zip
                 RunOrder: 1
         - Name: Build
@@ -103,7 +132,7 @@ Resources:
                 Version: 1
                 Provider: S3
               Configuration:
-                BucketName: !Ref ArtifactBucket
+                BucketName: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket]
                 Extract: true
               RunOrder: 1
             - Name: NotifyCloudformation
@@ -117,7 +146,7 @@ Resources:
               RunOrder: 2
       ArtifactStore:
         Type: S3
-        Location: !Ref ArtifactBucket
+        Location: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket]
 
 
   BuildCompleteWaitCondition:
@@ -173,18 +202,20 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
-        ZipFile: !Sub |
-          import boto3
-          import cfnresponse
-          from urllib.request import urlopen
-
-          def handler(event, context):
-            s3 = boto3.client('s3')
-
-            replay_source = urlopen('https://github.com/aws-samples/amazon-kinesis-replay/archive/master.zip')
-            s3.put_object(Bucket='${ArtifactBucket}',Key='sources/amazon-kinesis-replay.zip',Body=replay_source.read())
-
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        ZipFile: !Sub 
+          - |
+            import boto3
+            import cfnresponse
+            from urllib.request import urlopen
+  
+            def handler(event, context):
+              s3 = boto3.client('s3')
+  
+              replay_source = urlopen('https://github.com/aws-samples/amazon-kinesis-replay/archive/master.zip')
+              s3.put_object(Bucket='${ArtifactBucket}',Key='sources/amazon-kinesis-replay.zip',Body=replay_source.read())
+  
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+          - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
       Runtime: python3.7
       Timeout: 60
 
@@ -240,8 +271,12 @@ Resources:
             Version: 2012-10-17
             Statement:
               - Resource:
-                  - !Sub arn:aws:s3:::${ArtifactBucket}
-                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                - !Sub 
+                  - arn:aws:s3:::${ArtifactBucket}
+                  - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
+                - !Sub 
+                  - arn:aws:s3:::${ArtifactBucket}/*
+                  - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
                 Effect: Allow
                 Action:
                   - s3:PutObject
@@ -286,8 +321,12 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
               - Resource: 
-                  - !Sub arn:aws:s3:::${ArtifactBucket}
-                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                - !Sub 
+                  - arn:aws:s3:::${ArtifactBucket}
+                  - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
+                - !Sub 
+                  - arn:aws:s3:::${ArtifactBucket}/*
+                  - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
                 Effect: Allow
                 Action:
                   - s3:GetObject
@@ -328,8 +367,12 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
           - Resource: 
-              - !Sub arn:aws:s3:::${ArtifactBucket}
-              - !Sub arn:aws:s3:::${ArtifactBucket}/*
+              - !Sub 
+                - arn:aws:s3:::${ArtifactBucket}
+                - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
+              - !Sub 
+                - arn:aws:s3:::${ArtifactBucket}/*
+                - { ArtifactBucket: !If [UseInternalArtifactBucket, !Ref InternalArtifactBucket, !Ref ExternalArtifactBucket] }
             Effect: Allow
             Action:
               - s3:PutObject
