@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: 2010-09-09
 
+Description: Infrastructure to run the amazon-kinesis-replay Java application
+
 Parameters:
   SshKeyName:
     Description: Name of an existing EC2 KeyPair to enable SSH access to the EC2 instance for replaying events
