@@ -17,6 +17,7 @@
 
 package com.amazonaws.samples.kinesis.replay;
 
+import com.amazonaws.regions.Regions;
 import com.amazonaws.samples.kinesis.replay.events.JsonEvent;
 import com.amazonaws.samples.kinesis.replay.utils.BackpressureSemaphore;
 import com.amazonaws.samples.kinesis.replay.utils.EventBuffer;
@@ -42,6 +43,9 @@ public class StreamPopulator {
 
   /** Block process if number of locally buffered events exceeds MAX_OUTSTANDING_RECORD_COUNT. */
   private static final int MAX_OUTSTANDING_RECORD_COUNT = 10_000;
+
+  private static final String DEFAULT_REGION_NAME = Regions.getCurrentRegion()==null ? "eu-west-1" : Regions.getCurrentRegion().getName();
+
 
   private final String streamName;
   private final String bucketName;
@@ -116,12 +120,12 @@ public class StreamPopulator {
           line.getOptionValue("bucketRegion", "us-east-1"),
           line.getOptionValue("bucketName", "aws-bigdata-blog"),
           line.getOptionValue("objectPrefix", "artifacts/kinesis-analytics-taxi-consumer/taxi-trips.json.lz4/"),
-          line.getOptionValue("streamRegion", "eu-west-1"),
+          line.getOptionValue("streamRegion", DEFAULT_REGION_NAME),
           line.getOptionValue("streamName", "taxi-trip-events"),
           line.hasOption("aggregate"),
           line.getOptionValue("timestampAttributeName", "dropoff_datetime"),
           Float.valueOf(line.getOptionValue("speedup", "6480")),
-          Long.valueOf(line.getOptionValue("statisticsFrequency", "60000")),
+          Long.valueOf(line.getOptionValue("statisticsFrequency", "20000")),
           line.hasOption("noWatermark"),
           seekToEpoch
       );
