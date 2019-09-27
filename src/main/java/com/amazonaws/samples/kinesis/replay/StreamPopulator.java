@@ -140,7 +140,18 @@ public class StreamPopulator {
     long statisticsLastOutputTimeslot = 0;
 
     try {
-      JsonEvent event = eventBuffer.peek();
+      JsonEvent event = null;
+
+      for (int i=0; i<3; i++) {
+        // check if the buffer is empty; retry to be sure we are not just reading slow
+        event = eventBuffer.peek();
+
+        if (event != null) {
+          break;
+        }
+
+        Thread.sleep(1000);
+      }
 
       if (event == null) {
         LOG.error("didn't find any events to replay in s3://{}/{}", bucketName, objectPrefix);
