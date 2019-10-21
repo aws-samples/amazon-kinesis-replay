@@ -30,7 +30,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import java.lang.invoke.MethodHandles;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import org.apache.commons.cli.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -183,11 +182,11 @@ public class StreamPopulator {
 
           if (LOG.isDebugEnabled()) {
             LOG.debug("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag, {} buffer fill level)",
-                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, replayTimeGap.truncatedTo(ChronoUnit.SECONDS),
+                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()),
                 String.format("%.2f", eventBuffer.getFillLevel()));
           } else {
             LOG.info("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag)",
-                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, replayTimeGap.truncatedTo(ChronoUnit.SECONDS));
+                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()));
           }
 
           statisticsBatchEventCount = 0;

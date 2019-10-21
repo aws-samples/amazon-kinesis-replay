@@ -27,7 +27,7 @@
   <packaging>jar</packaging>
 
   <properties>
-    <java.version>11</java.version>
+    <java.version>8</java.version>
     <aws.java-sdk.version>2.9.21</aws.java-sdk.version>
     <slf4j.version>1.7.28</slf4j.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -92,12 +92,6 @@
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-compress</artifactId>
       <version>1.19</version>
-    </dependency>
-
-    <dependency>
-      <groupId>javax.xml.bind</groupId>
-      <artifactId>jaxb-api</artifactId>
-      <version>2.3.1</version>
     </dependency>
   </dependencies>
 
