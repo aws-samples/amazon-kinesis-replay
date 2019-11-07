@@ -142,7 +142,7 @@ public class StreamPopulator {
       JsonEvent event = null;
 
       for (int i=0; i<3; i++) {
-        // check if the buffer is empty; retry to be sure we are not just reading slow
+        // check if the buffer is empty; retry two times to be sure we are not just reading slowly
         event = eventBuffer.peek();
 
         if (event != null) {
