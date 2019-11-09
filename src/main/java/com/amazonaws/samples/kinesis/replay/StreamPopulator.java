@@ -61,7 +61,6 @@ public class StreamPopulator {
         .setRegion(streamRegion)
         .setRecordTtl(60_000)
         .setThreadingModel(KinesisProducerConfiguration.ThreadingModel.POOLED)
-        .setThreadPoolSize(8)
         .setAggregationEnabled(aggregate);
 
     final S3Client s3 = S3Client.builder().region(Region.of(bucketRegion)).build();

@@ -17,6 +17,14 @@ Parameters:
     Type: String
     Default: 0.0.0.0/0
 
+  AmazonLinux2Ami:
+    Type: "AWS::SSM::Parameter::Value<String>"
+    Default: "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+
+  InstanceType:
+    Type: String
+    Default: c5.large
+
 
 Outputs:
   KinesisReplayInstance:
@@ -44,13 +52,9 @@ Resources:
   KinesisReplayInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId:
-        Fn::FindInMap:
-        - AWSRegionArch2AMI
-        - !Ref AWS::Region
-        - HVM64
+      ImageId: !Ref AmazonLinux2Ami
       Monitoring: true
-      InstanceType: c5.large
+      InstanceType: !Ref InstanceType
       IamInstanceProfile: !Ref KinesisReplayInstanceProfile
       KeyName: !Ref SshKeyName
       NetworkInterfaces:
@@ -70,11 +74,7 @@ Resources:
             #!/bin/bash -x
             
             yum update -y
-            yum install -y tmux
-
-            # install Java 11
-            amazon-linux-extras enable java-openjdk11
-            yum install -y java-11-openjdk
+            yum install -y tmux java-11-amazon-corretto-headless
 
             # copy the replay Java app from s3
             su ec2-user -l -c "${KinesisReplayBuildStack.Outputs.KinesisReplayCopyCommand}"
