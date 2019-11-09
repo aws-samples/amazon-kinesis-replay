@@ -151,7 +151,7 @@ public class StreamPopulator {
 
       eventBuffer.fill();
 
-      JsonEvent event = eventBuffer.peek();;
+      JsonEvent event = eventBuffer.peek();
 
       if (event == null) {
         LOG.error("didn't find any events to replay in s3://{}/{}", bucketName, objectPrefix);
@@ -191,8 +191,7 @@ public class StreamPopulator {
 
           if (LOG.isDebugEnabled()) {
             LOG.debug("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag, {} buffer size)",
-                dropoffTime, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()),
-                String.format("%.2f", eventBuffer.size()));
+                dropoffTime, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()), eventBuffer.size());
           } else {
             LOG.info("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag)",
                 dropoffTime, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()));
