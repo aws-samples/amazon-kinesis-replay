@@ -40,9 +40,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 public class StreamPopulator {
   private static final Logger LOG = LoggerFactory.getLogger(StreamPopulator.class);
 
-  /** Block process if number of locally buffered events exceeds MAX_OUTSTANDING_RECORD_COUNT. */
-  private static final int MAX_OUTSTANDING_RECORD_COUNT = 10_000;
-
   private static final String DEFAULT_REGION_NAME = Regions.getCurrentRegion()==null ? "eu-west-1" : Regions.getCurrentRegion().getName();
 
 
@@ -56,7 +53,7 @@ public class StreamPopulator {
   private final BackpressureSemaphore<UserRecordResult> backpressureSemaphore;
 
 
-  public StreamPopulator(String bucketRegion, String bucketName, String objectPrefix, String streamRegion, String streamName, boolean aggregate, String timestampAttributeName, float speedupFactor, long statisticsFrequencyMillies, boolean noWatermark, Instant seekToEpoch) {
+  public StreamPopulator(String bucketRegion, String bucketName, String objectPrefix, String streamRegion, String streamName, boolean aggregate, String timestampAttributeName, float speedupFactor, long statisticsFrequencyMillies, boolean noWatermark, Instant seekToEpoch, int bufferSize, int maxOutstandingRecords, boolean noBackpressure) {
     KinesisProducerConfiguration producerConfiguration = new KinesisProducerConfiguration()
         .setRegion(streamRegion)
         .setRecordTtl(60_000)
@@ -70,21 +67,27 @@ public class StreamPopulator {
     this.objectPrefix = objectPrefix;
     this.statisticsFrequencyMillies = statisticsFrequencyMillies;
     this.kinesisProducer = new KinesisProducer(producerConfiguration);
-    this.backpressureSemaphore = new BackpressureSemaphore<>(MAX_OUTSTANDING_RECORD_COUNT);
-
 
     EventReader eventReader = new EventReader(s3, bucketName, objectPrefix, speedupFactor, timestampAttributeName);
     if (seekToEpoch != null) {
       eventReader.seek(seekToEpoch);
     }
 
-    eventBuffer = new EventBuffer(eventReader);
+    eventBuffer = new EventBuffer(eventReader, bufferSize);
     eventBuffer.start();
 
-    watermarkGenerator = new WatermarkGenerator(Region.of(streamRegion), streamName);
-
     if (!noWatermark) {
+      watermarkGenerator = new WatermarkGenerator(Region.of(streamRegion), streamName);
+
       watermarkGenerator.start();
+    } else {
+      watermarkGenerator = null;
+    }
+
+    if (!noBackpressure) {
+      this.backpressureSemaphore = new BackpressureSemaphore<>(maxOutstandingRecords);
+    } else {
+      this.backpressureSemaphore = null;
     }
   }
 
@@ -102,6 +105,9 @@ public class StreamPopulator {
         .addOption("seek", true, "start replaying events at given timestamp")
         .addOption("statisticsFrequency", true, "print statistics every statisticFrequency ms")
         .addOption("noWatermark", "don't ingest watermarks into the stream")
+        .addOption("bufferSize", "size of the buffer that holds events to sent to the stream")
+        .addOption("maxOutstandingRecords", "block producer if more than maxOutstandingRecords are in flight")
+        .addOption("noBackpressure", "don't block producer if too many messages are in flight")
         .addOption("help", "print this help message");
 
     CommandLine line = new DefaultParser().parse(options, args);
@@ -125,7 +131,10 @@ public class StreamPopulator {
           Float.valueOf(line.getOptionValue("speedup", "6480")),
           Long.valueOf(line.getOptionValue("statisticsFrequency", "20000")),
           line.hasOption("noWatermark"),
-          seekToEpoch
+          seekToEpoch,
+          Integer.valueOf(line.getOptionValue("bufferSize", "100000")),
+          Integer.valueOf(line.getOptionValue("maxOutstandingRecords", "10000")),
+          line.hasOption("noBackpressure")
       );
 
       populator.populate();
@@ -138,18 +147,11 @@ public class StreamPopulator {
     long statisticsLastOutputTimeslot = 0;
 
     try {
-      JsonEvent event = null;
+      LOG.info("populating internal event buffer");
 
-      for (int i=0; i<3; i++) {
-        // check if the buffer is empty; retry two times to be sure we are not just reading slowly
-        event = eventBuffer.peek();
+      eventBuffer.fill();
 
-        if (event != null) {
-          break;
-        }
-
-        Thread.sleep(1000);
-      }
+      JsonEvent event = eventBuffer.peek();;
 
       if (event == null) {
         LOG.error("didn't find any events to replay in s3://{}/{}", bucketName, objectPrefix);
@@ -159,7 +161,7 @@ public class StreamPopulator {
 
       final long ingestionStartTime = System.currentTimeMillis();
 
-      LOG.info("starting to populate stream {}", streamName);
+      LOG.info("starting to ingest events into stream {}", streamName);
 
       do {
         event = eventBuffer.take();
@@ -179,13 +181,21 @@ public class StreamPopulator {
         if ((System.currentTimeMillis() - ingestionStartTime) / statisticsFrequencyMillies != statisticsLastOutputTimeslot) {
           double statisticsBatchEventRate = Math.round(1000.0 * statisticsBatchEventCount / statisticsFrequencyMillies);
 
+          Instant dropoffTime;
+
+          if (watermarkGenerator != null) {
+            dropoffTime = watermarkGenerator.getMinWatermark();
+          } else {
+            dropoffTime = eventBuffer.peek().timestamp;
+          }
+
           if (LOG.isDebugEnabled()) {
-            LOG.debug("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag, {} buffer fill level)",
-                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()),
-                String.format("%.2f", eventBuffer.getFillLevel()));
+            LOG.debug("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag, {} buffer size)",
+                dropoffTime, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()),
+                String.format("%.2f", eventBuffer.size()));
           } else {
             LOG.info("all events with dropoff time until {} have been sent ({} events/sec, {} replay lag)",
-                watermarkGenerator.getMinWatermark(), statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()));
+                dropoffTime, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()));
           }
 
           statisticsBatchEventCount = 0;
@@ -198,7 +208,10 @@ public class StreamPopulator {
       //allow thread to exit
     } finally {
       eventBuffer.interrupt();
-      watermarkGenerator.interrupt();
+
+      if (watermarkGenerator != null) {
+        watermarkGenerator.interrupt();
+      }
 
       kinesisProducer.flushSync();
       kinesisProducer.destroy();
@@ -210,11 +223,15 @@ public class StreamPopulator {
     ListenableFuture<UserRecordResult> f = kinesisProducer.addUserRecord(
         streamName, Integer.toString(event.hashCode()), event.toByteBuffer());
 
-    //block if too many events are buffered locally
-    backpressureSemaphore.acquire(f);
+    if (backpressureSemaphore != null) {
+      //block if too many events are buffered locally
+      backpressureSemaphore.acquire(f);
+    }
 
-    //monitor if the event has actually been sent and adapt the largest possible watermark value accordingly
-    watermarkGenerator.trackTimestamp(f, event);
+    if (watermarkGenerator != null) {
+      //monitor if the event has actually been sent and adapt the largest possible watermark value accordingly
+      watermarkGenerator.trackTimestamp(f, event);
+    }
 
     LOG.trace("sent event {}", event);
   }

@@ -22,16 +22,19 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.Semaphore;
 
 public class EventBuffer extends Thread {
-  private static final int MAX_QUEUE_LENGTH = 100_000;
 
   private boolean hasNext = true;
 
   private EventReader reader;
-  private final Semaphore semaphore = new Semaphore(MAX_QUEUE_LENGTH);
-  private final PriorityBlockingQueue<JsonEvent> eventPool = new PriorityBlockingQueue<>(MAX_QUEUE_LENGTH, JsonEvent.timestampComparator);
+  private final int bufferSize;
+  private final Semaphore semaphore;
+  private final PriorityBlockingQueue<JsonEvent> eventPool;
 
-  public EventBuffer(EventReader reader) {
+  public EventBuffer(EventReader reader, int bufferSize) {
     this.reader = reader;
+    this.bufferSize = bufferSize;
+    this.semaphore = new Semaphore(bufferSize);
+    this.eventPool = new PriorityBlockingQueue<>(bufferSize, JsonEvent.timestampComparator);
   }
 
   public void run() {
@@ -66,7 +69,14 @@ public class EventBuffer extends Thread {
     return eventPool.peek();
   }
 
-  public double getFillLevel() {
-    return (double) eventPool.size()/MAX_QUEUE_LENGTH;
+  public int size() {
+    return eventPool.size();
   }
+
+  public void fill() throws InterruptedException {
+    while (eventPool.size() < bufferSize) {
+      Thread.sleep(100);
+    }
+  }
+
 }
