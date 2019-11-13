@@ -28,8 +28,8 @@
 
   <properties>
     <java.version>8</java.version>
-    <aws.java-sdk.version>2.9.21</aws.java-sdk.version>
-    <slf4j.version>1.7.28</slf4j.version>
+    <aws.java-sdk.version>2.10.14</aws.java-sdk.version>
+    <slf4j.version>1.7.29</slf4j.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -50,12 +50,6 @@
           <artifactId>httpclient</artifactId>
         </exclusion>
       </exclusions>
-    </dependency>
-
-    <dependency>
-      <groupId>software.amazon.awssdk</groupId>
-      <artifactId>sdk-core</artifactId>
-      <version>${aws.java-sdk.version}</version>
     </dependency>
 
     <dependency>

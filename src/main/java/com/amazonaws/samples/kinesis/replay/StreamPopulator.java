@@ -128,12 +128,12 @@ public class StreamPopulator {
           line.getOptionValue("streamName", "taxi-trip-events"),
           line.hasOption("aggregate"),
           line.getOptionValue("timestampAttributeName", "dropoff_datetime"),
-          Float.valueOf(line.getOptionValue("speedup", "6480")),
-          Long.valueOf(line.getOptionValue("statisticsFrequency", "20000")),
+          Float.parseFloat(line.getOptionValue("speedup", "6480")),
+          Long.parseLong(line.getOptionValue("statisticsFrequency", "20000")),
           line.hasOption("noWatermark"),
           seekToEpoch,
-          Integer.valueOf(line.getOptionValue("bufferSize", "100000")),
-          Integer.valueOf(line.getOptionValue("maxOutstandingRecords", "10000")),
+          Integer.parseInt(line.getOptionValue("bufferSize", "100000")),
+          Integer.parseInt(line.getOptionValue("maxOutstandingRecords", "10000")),
           line.hasOption("noBackpressure")
       );
 
