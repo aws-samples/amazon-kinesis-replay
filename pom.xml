@@ -29,6 +29,7 @@
   <properties>
     <java.version>8</java.version>
     <aws.java-sdk.version>2.10.62</aws.java-sdk.version>
+    <aws.kpl.version>0.14.0</aws.kpl.version>
     <slf4j.version>1.7.29</slf4j.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
@@ -37,7 +38,7 @@
     <dependency>
       <groupId>com.amazonaws</groupId>
       <artifactId>amazon-kinesis-producer</artifactId>
-      <version>0.14.0</version>
+      <version>${aws.kpl.version}</version>
       <exclusions>
         <exclusion>
           <!-- Exclude an old version of jackson-dataformat-cbor that is being pulled in by a transitive dependency -->
