@@ -19,6 +19,7 @@ package com.amazonaws.samples.kinesis.replay.events;
 
 import com.amazonaws.util.json.Jackson;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -55,7 +56,9 @@ public class JsonEvent extends Event {
     public JsonEvent parse(String payload) {
       JsonNode json = Jackson.fromJsonString(payload, JsonNode.class);
 
-      Instant timestamp = Instant.parse(json.get(timestampAttributeName).asText());
+      // JR: get "properties" then nested timestampAttributeName, assume sql Timestamp format
+      Timestamp sqlTimestamp = Timestamp.valueOf(json.get("properties").get(timestampAttributeName).asText());
+      Instant timestamp = sqlTimestamp.toInstant();
 
       if (firstEventTimestamp == null) {
         firstEventTimestamp = timestamp;

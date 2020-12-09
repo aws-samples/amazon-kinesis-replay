@@ -2,6 +2,20 @@
 
 A simple Java application that replays Json events that are stored in objects in Amazon S3 into a Amazon Kinesis stream. The application reads the timestamp attribute of the stored events and replays them as if they occurred in real time.
 
+### Building
+
+Install maven:
+```
+brew install maven
+```
+
+Build the package:
+```
+mvn package
+```
+
+### Original README continued
+
 By default, the application will replay a historic data set of taxi trips that made in New York City that is derived from the public dataset [available from the Registry of Open Data on AWS](https://registry.opendata.aws/nyc-tlc-trip-records-pds/).
 
 ```
