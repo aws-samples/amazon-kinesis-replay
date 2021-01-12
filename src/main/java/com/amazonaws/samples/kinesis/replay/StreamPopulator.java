@@ -105,8 +105,8 @@ public class StreamPopulator {
         .addOption("seek", true, "start replaying events at given timestamp")
         .addOption("statisticsFrequency", true, "print statistics every statisticFrequency ms")
         .addOption("noWatermark", "don't ingest watermarks into the stream")
-        .addOption("bufferSize", "size of the buffer that holds events to sent to the stream")
-        .addOption("maxOutstandingRecords", "block producer if more than maxOutstandingRecords are in flight")
+        .addOption("bufferSize", true, "size of the buffer that holds events to sent to the stream")
+        .addOption("maxOutstandingRecords", true, "block producer if more than maxOutstandingRecords are in flight")
         .addOption("noBackpressure", "don't block producer if too many messages are in flight")
         .addOption("help", "print this help message");
 
