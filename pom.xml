@@ -21,7 +21,7 @@
 
   <groupId>com.amazonaws.samples.kinesis.replay</groupId>
   <artifactId>amazon-kinesis-replay</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1.1</version>
   <name>amazon-kinesis-replay</name>
 
   <packaging>jar</packaging>
