@@ -24,6 +24,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import java.time.Instant;
 import java.util.*;
+import com.google.common.util.concurrent.MoreExecutors;
 import java.util.concurrent.PriorityBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +37,7 @@ public class TimestampTracker {
 
   /** Track the timestamp of the event for determining watermark values until it has been sent or dropped. */
   public void trackTimestamp(ListenableFuture<UserRecordResult> f, JsonEvent event) {
-    Futures.addCallback(f, new RemoveTimestampCallback(event));
+    Futures.addCallback(f, new RemoveTimestampCallback(event), MoreExecutors.directExecutor());
   }
 
   public Instant getWatermark(String shardId) {

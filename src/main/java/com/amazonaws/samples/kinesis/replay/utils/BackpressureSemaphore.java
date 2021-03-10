@@ -20,6 +20,8 @@ package com.amazonaws.samples.kinesis.replay.utils;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.MoreExecutors;
+
 import java.util.concurrent.Semaphore;
 
 public class BackpressureSemaphore<T> implements FutureCallback<T> {
@@ -44,7 +46,7 @@ public class BackpressureSemaphore<T> implements FutureCallback<T> {
     try {
       semaphore.acquire();
 
-      Futures.addCallback(f, this);
+      Futures.addCallback(f, this, MoreExecutors.directExecutor());
     } catch (InterruptedException e) {
       semaphore.release();
     }

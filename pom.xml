@@ -29,7 +29,7 @@
   <properties>
     <java.version>8</java.version>
     <aws.java-sdk.version>2.15.66</aws.java-sdk.version>
-    <aws.kpl.version>0.14.3</aws.kpl.version>
+    <aws.kpl.version>0.14.5</aws.kpl.version>
     <slf4j.version>1.7.29</slf4j.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
