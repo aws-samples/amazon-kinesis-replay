@@ -21,6 +21,8 @@ import com.amazonaws.samples.kinesis.replay2.events.JsonEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.Semaphore;
 
@@ -38,6 +40,7 @@ public class JsonEventBufferedReader extends Thread {
     private final PriorityBlockingQueue<JsonEvent> buffer;
 
     public JsonEventBufferedReader(JsonEventS3Iterator sourceEventIterator, int bufferSize) {
+        super("EventReader" + UUID.randomUUID().toString().substring(0, 5));
         this.sourceEventIterator = sourceEventIterator;
         this.bufferSize = bufferSize;
         this.semaphore = new Semaphore(bufferSize);
@@ -60,9 +63,12 @@ public class JsonEventBufferedReader extends Thread {
                     Thread.currentThread().interrupt();
                 }
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ie) {
             LOG.debug("Buffered reader thread interrupted");
             // Allow thread to exit
+        } catch (Exception e) {
+            LOG.error("Error while reading from source iterator", e);
+            System.exit(1);
         }
     }
 
@@ -79,11 +85,6 @@ public class JsonEventBufferedReader extends Thread {
     public JsonEvent peek() {
         return buffer.peek();
     }
-
-    public int bufferCapacity() {
-        return buffer.size();
-    }
-
 
     /**
      * Wait until the buffer is filled to its capacity

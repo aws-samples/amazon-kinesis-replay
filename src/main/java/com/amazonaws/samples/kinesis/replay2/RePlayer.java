@@ -3,7 +3,7 @@ package com.amazonaws.samples.kinesis.replay2;
 import com.amazonaws.samples.kinesis.replay2.events.JsonEvent;
 import com.amazonaws.samples.kinesis.replay2.utils.JsonEventBufferedReader;
 import com.amazonaws.samples.kinesis.replay2.utils.JsonEventS3Iterator;
-import com.amazonaws.samples.kinesis.replay2.utils.KinesisBufferedProducer;
+import com.amazonaws.samples.kinesis.replay2.utils.KinesisProducer;
 import org.apache.commons.cli.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,15 +24,16 @@ public class RePlayer {
     private static final long DEFAULT_STATISTICS_FREQUENCY_MILLIS = 20000;
     private static final String DEFAULT_TIMESTAMP_ATTRIBUTE_NAME = "dropoff_datetime";
     private static final int DEFAULT_READER_BUFFER_SIZE = 100_000;
-    private static final int DEFAULT_PRODUCER_BUFFER_SIZE = 1000;
+    private static final int DEFAULT_PRODUCER_BUFFER_SIZE = 5000;
+    private static final int DEFAULT_PRODUCER_THREAD_COUNT = 4;
 
     private final JsonEventBufferedReader bufferedReader;
-    private final KinesisBufferedProducer kinesisProducer;
+    private final KinesisProducer kinesisProducer;
     private final String s3SourcePrefix; // For logging only
     private final String kinesisDestinationStreamArn; // For logging only
     private final long statisticsFrequencyMillis;
 
-    public RePlayer(String bucketRegion, String bucketName, String objectPrefix, String streamArn, String timestampAttributeName, float speedupFactor, long statisticsFrequencyMillis, Instant seekToEpoch, int readerBufferSize, int producerBufferSize) {
+    public RePlayer(String bucketRegion, String bucketName, String objectPrefix, String streamArn, String timestampAttributeName, float speedupFactor, long statisticsFrequencyMillis, Instant seekToEpoch, int readerBufferSize, int producerBufferSize, int kinesisSenderThreads) {
         s3SourcePrefix = String.format("s3://%s/%s", bucketName, objectPrefix);
         kinesisDestinationStreamArn = streamArn;
         LOG.info("Replay events from {} into Kinesis stream {}", s3SourcePrefix, kinesisDestinationStreamArn);
@@ -40,6 +41,7 @@ public class RePlayer {
         this.statisticsFrequencyMillis = statisticsFrequencyMillis;
 
         // Initialize S3 reader
+        // amazonq-ignore-next-line
         S3Client s3 = S3Client.builder().region(Region.of(bucketRegion)).build();
         JsonEventS3Iterator sourceIterator = new JsonEventS3Iterator(s3, bucketName, objectPrefix, speedupFactor, timestampAttributeName);
 
@@ -48,14 +50,14 @@ public class RePlayer {
             sourceIterator.seek(seekToEpoch);
         }
 
+
         // Start S3 reader thread
+        // Start Kinesis producer
         bufferedReader = new JsonEventBufferedReader(sourceIterator, readerBufferSize);
+        kinesisProducer = new KinesisProducer(streamArn, producerBufferSize, kinesisSenderThreads);
+
         bufferedReader.start();
-
-
-        // Initialize Kinesis Producer
-        kinesisProducer = new KinesisBufferedProducer(streamArn, producerBufferSize);
-        kinesisProducer.start();
+        kinesisProducer.startSenders();
     }
 
     public static void main(String[] args) throws ParseException {
@@ -70,6 +72,7 @@ public class RePlayer {
                 .addOption("statisticsFrequency", true, "print statistics every statisticFrequency ms")
                 .addOption("readerBufferSize", true, "size of the buffer that holds events read from S3")
                 .addOption("kinesisProducerBuffer", true, "size of the buffer of the Kinesis producer")
+                .addOption("kinesisSenderThreads", true, "number of threads sending events to Kinesis")
                 .addOption("help", "print this help message");
 
         CommandLine line = new DefaultParser().parse(options, args);
@@ -84,8 +87,9 @@ public class RePlayer {
             String timestampAttributeName = line.getOptionValue("timestampAttributeName", DEFAULT_TIMESTAMP_ATTRIBUTE_NAME);
             Instant seekToEpoch = line.hasOption("seek") ? Instant.parse(line.getOptionValue("seek")) : null;
             long statisticsFrequencyMillis = Long.parseLong(line.getOptionValue("statisticsFrequency", String.valueOf(DEFAULT_STATISTICS_FREQUENCY_MILLIS)));
-            int bufferSize = Integer.parseInt(line.getOptionValue("bufferSize", String.valueOf(DEFAULT_READER_BUFFER_SIZE)));
+            int readerBufferSize = Integer.parseInt(line.getOptionValue("readerBufferSize", String.valueOf(DEFAULT_READER_BUFFER_SIZE)));
             int kinesisProducerBuffer = Integer.parseInt(line.getOptionValue("kinesisProducerBuffer", String.valueOf(DEFAULT_PRODUCER_BUFFER_SIZE)));
+            int kinesisSenderThreads = Integer.parseInt(line.getOptionValue("kinesisSenderThreads", String.valueOf(DEFAULT_PRODUCER_THREAD_COUNT)));
 
             LOG.debug("RePlayer configuration:" +
                             "\n\tDestination stream ARN: {}" +
@@ -93,14 +97,16 @@ public class RePlayer {
                             "\n\tSpeedup factor: {}" +
                             "\n\tTimestamp attribute name: {}" +
                             "\n\tStatistics frequency: {} ms" +
-                            "\n\tBuffer size: {}" +
-                            "\n\tKinesis producer buffer: {}",
-                    streamArn, bucketRegion, bucketName, objectPrefix, speedupFactor, timestampAttributeName, statisticsFrequencyMillis, bufferSize, kinesisProducerBuffer);
+                            "\n\tReader Buffer size: {}" +
+                            "\n\tKinesis producer buffer: {}" +
+                            "\n\tKinesis sender threads: {}",
+                    streamArn, bucketRegion, bucketName, objectPrefix, speedupFactor, timestampAttributeName, statisticsFrequencyMillis, readerBufferSize, kinesisProducerBuffer, kinesisSenderThreads);
             if (seekToEpoch != null) {
                 LOG.debug("\n\tSeek first event @ {}", seekToEpoch);
             }
 
-            RePlayer rePlayer = new RePlayer(bucketRegion, bucketName, objectPrefix, streamArn, timestampAttributeName, speedupFactor, statisticsFrequencyMillis, seekToEpoch, bufferSize, kinesisProducerBuffer);
+            RePlayer rePlayer = new RePlayer(bucketRegion, bucketName, objectPrefix, streamArn, timestampAttributeName, speedupFactor, statisticsFrequencyMillis, seekToEpoch, readerBufferSize, kinesisProducerBuffer, kinesisSenderThreads);
+
             rePlayer.replay();
         }
     }
@@ -144,8 +150,8 @@ public class RePlayer {
                     double statisticsBatchEventRate = Math.round(1000.0 * statisticsBatchEventCount / statisticsFrequencyMillis);
 
                     if (LOG.isDebugEnabled() || LOG.isTraceEnabled()) {
-                        LOG.debug("All events with dropoff time until {} have been sent ({} events, {} events/sec, {} replay lag, {} buffer capacity)",
-                                event.timestamp, statisticsTotalEventCount, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()), bufferedReader.bufferCapacity());
+                        LOG.debug("All events with dropoff time until {} have been sent ({} events, {} events/sec, {} replay lag, {}/{} sender buffer capacity/used, {}/{} PutRecords requests/retries)",
+                                event.timestamp, statisticsTotalEventCount, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()), kinesisProducer.bufferCapacity(), kinesisProducer.bufferedEventCount(), kinesisProducer.totalRequestCount(), kinesisProducer.totalRetryCount());
                     } else {
                         LOG.info("All events with dropoff time until {} have been sent ({} events, {} events/sec, {} replay lag)",
                                 event.timestamp, statisticsTotalEventCount, statisticsBatchEventRate, Duration.ofSeconds(replayTimeGap.getSeconds()));
@@ -166,7 +172,7 @@ public class RePlayer {
             // Stop reader
             bufferedReader.interrupt();
             // Stop producer
-            kinesisProducer.interrupt();
+            kinesisProducer.stopSenders();
         }
     }
 }
