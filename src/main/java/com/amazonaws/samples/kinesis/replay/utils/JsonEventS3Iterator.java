@@ -15,9 +15,9 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-package com.amazonaws.samples.kinesis.replay2.utils;
+package com.amazonaws.samples.kinesis.replay.utils;
 
-import com.amazonaws.samples.kinesis.replay2.events.JsonEvent;
+import com.amazonaws.samples.kinesis.replay.events.JsonEvent;
 import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.slf4j.Logger;

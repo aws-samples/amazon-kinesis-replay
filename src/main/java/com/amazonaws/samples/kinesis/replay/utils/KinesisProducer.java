@@ -1,6 +1,6 @@
-package com.amazonaws.samples.kinesis.replay2.utils;
+package com.amazonaws.samples.kinesis.replay.utils;
 
-import com.amazonaws.samples.kinesis.replay2.events.JsonEvent;
+import com.amazonaws.samples.kinesis.replay.events.JsonEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.regions.Region;

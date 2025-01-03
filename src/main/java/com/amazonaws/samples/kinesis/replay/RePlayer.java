@@ -1,9 +1,9 @@
-package com.amazonaws.samples.kinesis.replay2;
+package com.amazonaws.samples.kinesis.replay;
 
-import com.amazonaws.samples.kinesis.replay2.events.JsonEvent;
-import com.amazonaws.samples.kinesis.replay2.utils.JsonEventBufferedReader;
-import com.amazonaws.samples.kinesis.replay2.utils.JsonEventS3Iterator;
-import com.amazonaws.samples.kinesis.replay2.utils.KinesisProducer;
+import com.amazonaws.samples.kinesis.replay.events.JsonEvent;
+import com.amazonaws.samples.kinesis.replay.utils.JsonEventBufferedReader;
+import com.amazonaws.samples.kinesis.replay.utils.JsonEventS3Iterator;
+import com.amazonaws.samples.kinesis.replay.utils.KinesisProducer;
 import org.apache.commons.cli.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
